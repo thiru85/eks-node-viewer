@@ -86,13 +86,6 @@ func (u *UIModel) View() string {
 	b := strings.Builder{}
 
 	stats := u.cluster.Stats()
-	if stats.NumNodes == 0 {
-		fmt.Fprintln(&b, "Waiting for update or no nodes found...")
-		fmt.Fprintln(&b, u.paginator.View())
-		fmt.Fprintln(&b, helpStyle("←/→ page • q: quit"))
-
-		return b.String()
-	}
 
 	ctw := text.NewColorTabWriter(&b, 0, 8, 1)
 	u.writeClusterSummary(u.cluster.resources, stats, ctw)
@@ -101,6 +94,14 @@ func (u *UIModel) View() string {
 
 	fmt.Fprintf(&b, "%d pods (%d pending %d running %d bound)\n", stats.TotalPods,
 		stats.PodsByPhase[v1.PodPending], stats.PodsByPhase[v1.PodRunning], stats.BoundPodCount)
+
+	if stats.NumNodes == 0 {
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "Waiting for update or no nodes found...")
+		fmt.Fprintln(&b, u.paginator.View())
+		fmt.Fprintln(&b, helpStyle("←/→ page • q: quit"))
+		return b.String()
+	}
 
 	fmt.Fprintln(&b)
 	u.paginator.PerPage = u.computeItemsPerPage(stats.Nodes, &b)
@@ -111,8 +112,10 @@ func (u *UIModel) View() string {
 		u.paginator.Page = u.paginator.TotalPages - 1
 	}
 	start, end := u.paginator.GetSliceBounds(stats.NumNodes)
-	for _, n := range stats.Nodes[start:end] {
-		u.writeNodeInfo(n, ctw, u.cluster.resources)
+	if start >= 0 && end >= start {
+		for _, n := range stats.Nodes[start:end] {
+			u.writeNodeInfo(n, ctw, u.cluster.resources)
+		}
 	}
 	ctw.Flush()
 
@@ -172,7 +175,7 @@ func (u *UIModel) writeNodeInfo(n *Node, w io.Writer, resources []v1.ResourceNam
 			if n.Ready() {
 				fmt.Fprintf(w, "\tReady")
 			} else {
-				fmt.Fprintf(w, "\t%s", duration.HumanDuration(time.Since(n.Created())))
+				fmt.Fprintf(w, "\tNotReady/%s", duration.HumanDuration(time.Since(n.NotReadyTime())))
 			}
 
 			for _, label := range u.extraLabels {
